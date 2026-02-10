@@ -1,11 +1,13 @@
 FROM node:20-alpine AS builder
 WORKDIR /app
 
-COPY package.json ./
+ENV NODE_ENV=development
+
+COPY package.json package-lock.json* ./
 RUN npm install --legacy-peer-deps
 
 COPY . .
-RUN npm run build
+RUN NODE_ENV=production npm run build
 
 # Production stage
 FROM node:20-alpine
