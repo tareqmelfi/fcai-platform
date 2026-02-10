@@ -200,11 +200,15 @@ async function streamGemini(
   options: ChatOptions,
   res: Response,
 ): Promise<StreamResult> {
+  const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  if (!apiKey) {
+    throw new Error("Gemini API key not configured (set GOOGLE_API_KEY or AI_INTEGRATIONS_GEMINI_API_KEY)");
+  }
   const ai = new GoogleGenAI({
-    apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
+    apiKey,
     httpOptions: {
-      apiVersion: "",
-      baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
+      apiVersion: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL ? "" : undefined,
+      baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL || undefined,
     },
   });
 

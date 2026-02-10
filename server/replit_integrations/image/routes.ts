@@ -1,6 +1,5 @@
 import type { Express, Request, Response } from "express";
-import { Modality } from "@google/genai";
-import { ai } from "./client";
+import { generateImage } from "./client";
 
 export function registerImageRoutes(app: Express): void {
   app.post("/api/generate-image", async (req: Request, res: Response) => {
@@ -11,25 +10,16 @@ export function registerImageRoutes(app: Express): void {
         return res.status(400).json({ error: "Prompt is required" });
       }
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-image",
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        config: {
-          responseModalities: [Modality.TEXT, Modality.IMAGE],
-        },
-      });
-
-      const candidate = response.candidates?.[0];
-      const imagePart = candidate?.content?.parts?.find((part: any) => part.inlineData);
-
-      if (!imagePart?.inlineData?.data) {
-        return res.status(500).json({ error: "No image data in response" });
+      const dataUrl = await generateImage(prompt);
+      // Parse data URL: "data:image/png;base64,..."
+      const match = dataUrl.match(/^data:(.+?);base64,(.+)$/);
+      if (!match) {
+        return res.status(500).json({ error: "Invalid image data format" });
       }
 
-      const mimeType = imagePart.inlineData.mimeType || "image/png";
       res.json({
-        b64_json: imagePart.inlineData.data,
-        mimeType,
+        b64_json: match[2],
+        mimeType: match[1],
       });
     } catch (error) {
       console.error("Error generating image:", error);
