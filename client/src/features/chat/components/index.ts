@@ -11,4 +11,5 @@ export { SkillsPickerDropdown } from "./SkillsPickerDropdown";
 export { TemplateEditorDialog } from "./TemplateEditorDialog";
 export { TemplateSelector } from "./TemplateSelector";
 export { TemplatedMessage } from "./TemplatedMessage";
-export { TypingIndicator } from "./TypingIndicator";
+export { MessageList } from "./MessageList";
+export { ChatInput } from "./ChatInput";

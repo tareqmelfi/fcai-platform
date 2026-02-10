@@ -59,3 +59,20 @@ export interface OutputTemplate {
   footerHtml: string | null;
   isBuiltin: boolean | null;
 }
+
+export interface MessageType {
+  id: number;
+  role: "user" | "assistant" | "system" | "model";
+  content: string;
+  attachments?: any[];
+  createdAt?: string;
+}
+
+export interface ConversationType {
+  id: number;
+  title: string;
+  projectId?: number;
+  messages?: MessageType[];
+  createdAt?: string;
+  updatedAt?: string;
+}
