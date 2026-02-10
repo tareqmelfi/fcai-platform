@@ -14,18 +14,26 @@ const DEV_USER = {
   lastName: "النظام",
 };
 
+import { createClient } from "redis";
+import RedisStore from "connect-redis";
+
 export function getSession() {
   const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
-  const pgStore = connectPg(session);
-  const sessionStore = new pgStore({
-    conString: process.env.DATABASE_URL,
-    createTableIfMissing: true,
-    ttl: sessionTtl,
-    tableName: "sessions",
+  
+  const redisClient = createClient({
+    url: process.env.REDIS_URL || "redis://localhost:6379",
   });
+  
+  redisClient.connect().catch(console.error);
+
+  const redisStore = new RedisStore({
+    client: redisClient,
+    prefix: "sess:",
+  });
+
   return session({
+    store: redisStore,
     secret: process.env.SESSION_SECRET || "fcai-secret-key-change-in-production",
-    store: sessionStore,
     resave: false,
     saveUninitialized: false,
     cookie: {

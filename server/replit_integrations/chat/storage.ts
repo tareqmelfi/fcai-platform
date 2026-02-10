@@ -7,6 +7,7 @@ export interface IChatStorage {
   getAllConversations(): Promise<(typeof conversations.$inferSelect)[]>;
   getConversationsByProject(projectId: number): Promise<(typeof conversations.$inferSelect)[]>;
   createConversation(title: string, projectId?: number): Promise<typeof conversations.$inferSelect>;
+  updateConversation(id: number, data: { title?: string }): Promise<typeof conversations.$inferSelect | undefined>;
   deleteConversation(id: number): Promise<void>;
   getMessagesByConversation(conversationId: number): Promise<(typeof messages.$inferSelect)[]>;
   createMessage(conversationId: number, role: string, content: string, attachments?: any): Promise<typeof messages.$inferSelect>;
@@ -31,6 +32,14 @@ export const chatStorage: IChatStorage = {
     if (projectId) values.projectId = projectId;
     const [conversation] = await db.insert(conversations).values(values).returning();
     return conversation;
+  },
+
+  async updateConversation(id: number, data: { title?: string }) {
+    const updates: Record<string, unknown> = {};
+    if (data.title !== undefined) updates.title = data.title;
+    if (Object.keys(updates).length === 0) return this.getConversation(id);
+    const [updated] = await db.update(conversations).set(updates).where(eq(conversations.id, id)).returning();
+    return updated;
   },
 
   async deleteConversation(id: number) {

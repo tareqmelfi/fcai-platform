@@ -16,6 +16,7 @@ interface ChatOptions {
 }
 
 interface StreamResult {
+  fullResponse: string;
   totalTokens?: number;
   promptTokens?: number;
   completionTokens?: number;
@@ -72,7 +73,7 @@ async function streamOpenAICompatible(
   }
 
   let fullResponse = "";
-  let usage: StreamResult = {};
+  let usage: Omit<StreamResult, "fullResponse"> = {};
   const reader = resp.body?.getReader();
   const decoder = new TextDecoder();
 
@@ -110,7 +111,7 @@ async function streamOpenAICompatible(
     }
   }
 
-  return usage;
+  return { fullResponse, ...usage };
 }
 
 async function streamAnthropic(
@@ -153,7 +154,7 @@ async function streamAnthropic(
   }
 
   let fullResponse = "";
-  let usage: StreamResult = {};
+  let usage: Omit<StreamResult, "fullResponse"> = {};
   const reader = resp.body?.getReader();
   const decoder = new TextDecoder();
 
@@ -192,7 +193,7 @@ async function streamAnthropic(
     usage.totalTokens = usage.promptTokens + usage.completionTokens;
   }
 
-  return usage;
+  return { fullResponse, ...usage };
 }
 
 async function streamGemini(
@@ -226,7 +227,7 @@ async function streamGemini(
     }
   }
 
-  return {};
+  return { fullResponse };
 }
 
 export async function streamChatResponse(
@@ -239,15 +240,14 @@ export async function streamChatResponse(
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
 
-  let fullResponse = "";
-  let usage: StreamResult = {};
+  let result: StreamResult = { fullResponse: "" };
   const opts = { ...options, model: modelId };
 
   try {
     if (provider === "openrouter") {
       const apiKey = await getProviderApiKey("openrouter");
       if (!apiKey) throw new Error("OpenRouter API key not configured");
-      usage = await streamOpenAICompatible(
+      result = await streamOpenAICompatible(
         "https://openrouter.ai/api/v1/chat/completions",
         apiKey,
         opts,
@@ -257,7 +257,7 @@ export async function streamChatResponse(
     } else if (provider === "openai") {
       const apiKey = await getProviderApiKey("openai");
       if (!apiKey) throw new Error("OpenAI API key not configured");
-      usage = await streamOpenAICompatible(
+      result = await streamOpenAICompatible(
         "https://api.openai.com/v1/chat/completions",
         apiKey,
         opts,
@@ -266,17 +266,17 @@ export async function streamChatResponse(
     } else if (provider === "anthropic") {
       const apiKey = await getProviderApiKey("anthropic");
       if (!apiKey) throw new Error("Anthropic API key not configured");
-      usage = await streamAnthropic(apiKey, opts, res);
+      result = await streamAnthropic(apiKey, opts, res);
     } else {
-      usage = await streamGemini(opts, res);
+      result = await streamGemini(opts, res);
     }
   } catch (err: any) {
     console.error(`Chat proxy error (${provider}):`, err.message);
     if (!res.headersSent) {
       res.setHeader("Content-Type", "text/event-stream");
     }
-    res.write(`data: ${JSON.stringify({ content: `\n\n> خطأ: ${err.message}` })}\n\n`);
+    res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
   }
 
-  return { fullResponse, usage };
+  return { fullResponse: result.fullResponse, usage: result };
 }

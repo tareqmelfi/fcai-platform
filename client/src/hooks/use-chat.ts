@@ -1,5 +1,4 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, useCallback } from "react";
 
 interface Conversation {
   id: number;
@@ -78,108 +77,10 @@ export function useDeleteConversation() {
   });
 }
 
-interface StreamingChatOptions {
-  conversationId: number;
-  content: string;
-  model?: string;
-  temperature?: number;
-  maxTokens?: number;
-  topP?: number;
-  attachments?: any[];
-  systemInstructions?: string;
-  templateSystemPrompt?: string;
-  skillSystemPrompt?: string;
-  enabledMcpTools?: string[];
-}
-
-export function useStreamingChat() {
-  const queryClient = useQueryClient();
-  const [streamingContent, setStreamingContent] = useState("");
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [lastUsage, setLastUsage] = useState<any>(null);
-
-  const sendMessage = useCallback(
-    async ({ conversationId, content, model, temperature, maxTokens, topP, attachments, systemInstructions, templateSystemPrompt, skillSystemPrompt, enabledMcpTools }: StreamingChatOptions) => {
-      setIsStreaming(true);
-      setStreamingContent("");
-      setLastUsage(null);
-
-      queryClient.setQueryData(
-        ["/api/conversations", conversationId],
-        (old: ConversationWithMessages | undefined) => {
-          if (!old) return old;
-          return {
-            ...old,
-            messages: [
-              ...old.messages,
-              {
-                id: Date.now(),
-                role: "user" as const,
-                content,
-                createdAt: new Date().toISOString(),
-              },
-            ],
-          };
-        }
-      );
-
-      try {
-        const res = await fetch(`/api/conversations/${conversationId}/messages`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content, model, temperature, maxTokens, topP, attachments, systemInstructions, templateSystemPrompt, skillSystemPrompt, enabledMcpTools }),
-          credentials: "include",
-        });
-
-        if (!res.ok) throw new Error("Failed to send message");
-
-        const reader = res.body?.getReader();
-        const decoder = new TextDecoder();
-        let accumulated = "";
-
-        if (reader) {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            const text = decoder.decode(value, { stream: true });
-            const lines = text.split("\n");
-
-            for (const line of lines) {
-              if (line.startsWith("data: ")) {
-                try {
-                  const data = JSON.parse(line.slice(6));
-                  if (data.content) {
-                    accumulated += data.content;
-                    setStreamingContent(accumulated);
-                  }
-                  if (data.done) {
-                    if (data.usage) setLastUsage(data.usage);
-                    break;
-                  }
-                } catch {}
-              }
-            }
-          }
-        }
-
-        setIsStreaming(false);
-        setStreamingContent("");
-
-        queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId] });
-        queryClient.invalidateQueries({ queryKey: ["/api/conversations"] });
-      } catch (error) {
-        setIsStreaming(false);
-        setStreamingContent("");
-        throw error;
-      }
-    },
-    [queryClient]
-  );
-
-  return { sendMessage, streamingContent, isStreaming, lastUsage };
-}
-
+/**
+ * @deprecated Use `useStreamingChat` from `@/features/chat/hooks` instead.
+ * This non-streaming mutation is kept for backward compatibility only.
+ */
 export function useSendMessage() {
   const queryClient = useQueryClient();
   return useMutation({
