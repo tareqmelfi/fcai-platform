@@ -2,17 +2,10 @@ import passport from "passport";
 import session from "express-session";
 import type { Express, RequestHandler } from "express";
 import connectPg from "connect-pg-simple";
-import { Strategy as LocalStrategy } from "passport-local";
+import { Strategy as LocalStrategy } from "passport-local"; // Keep for dev/fallback if needed, or remove
 import { authStorage } from "./storage";
-
-// Default admin user
-const DEV_USER = {
-  id: "dev-admin-001",
-  email: "admin@fc.sa",
-  password: "Hh8787965@!",
-  firstName: "مدير",
-  lastName: "النظام",
-};
+// No separate OAuth2Client needed for Logto OIDC unless verifying manually, 
+// but we will use the token endpoint.
 
 export function getSession() {
   const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
@@ -43,126 +36,143 @@ export async function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
-  // Local strategy for email/password auth
-  passport.use(
-    new LocalStrategy(
-      { usernameField: "email", passwordField: "password" },
-      async (email, password, done) => {
-        try {
-          if (email === DEV_USER.email && password === DEV_USER.password) {
-            return done(null, {
-              claims: {
-                sub: DEV_USER.id,
-                email: DEV_USER.email,
-                first_name: DEV_USER.firstName,
-                last_name: DEV_USER.lastName,
-              },
-              expires_at: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
-            });
-          }
-          return done(null, false, { message: "بيانات الدخول غير صحيحة" });
-        } catch (err) {
-          return done(err);
-        }
-      }
-    )
-  );
+  // Serialize user to session
+  passport.serializeUser((user: any, cb) => cb(null, user));
+  passport.deserializeUser((user: any, cb) => cb(null, user));
 
-  passport.serializeUser((user: Express.User, cb) => cb(null, user));
-  passport.deserializeUser((user: Express.User, cb) => cb(null, user));
+  const LOGTO_ENDPOINT = process.env.LOGTO_ENDPOINT || "https://auth.fc.sa";
+  const LOGTO_APP_ID = process.env.LOGTO_APP_ID;
+  const LOGTO_APP_SECRET = process.env.LOGTO_APP_SECRET;
+  const LOGTO_CALLBACK_URL = process.env.LOGTO_CALLBACK_URL || "https://ai.fc.sa/api/auth/callback";
 
-  // Login endpoint
-  app.post("/api/auth/login", async (req, res) => {
-    const { email, password } = req.body;
-    if (email === DEV_USER.email && password === DEV_USER.password) {
-      await authStorage.upsertUser({
-        id: DEV_USER.id,
-        email: DEV_USER.email,
-        firstName: DEV_USER.firstName,
-        lastName: DEV_USER.lastName,
-        profileImageUrl: null,
-      });
-      const sessionUser: any = {
-        claims: {
-          sub: DEV_USER.id,
-          email: DEV_USER.email,
-          first_name: DEV_USER.firstName,
-          last_name: DEV_USER.lastName,
-        },
-        expires_at: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
-      };
-      req.login(sessionUser, (err) => {
-        if (err) {
-          return res.status(500).json({ message: "Login failed" });
-        }
-        return res.json({ success: true, redirect: "/dashboard" });
-      });
-    } else {
-      return res.status(401).json({ message: "بيانات الدخول غير صحيحة" });
+  // Login redirects to Logto
+  app.get("/api/auth/login", (req, res) => {
+    if (!LOGTO_APP_ID) {
+      console.error("LOGTO_APP_ID not set");
+      return res.status(500).json({ message: "Auth configuration missing" });
     }
+
+    const params = new URLSearchParams({
+      client_id: LOGTO_APP_ID,
+      redirect_uri: LOGTO_CALLBACK_URL,
+      response_type: "code",
+      scope: "openid email profile offline_access",
+      prompt: "consent",
+    });
+
+    res.redirect(`${LOGTO_ENDPOINT}/oidc/auth?${params.toString()}`);
   });
 
-  // Register endpoint
-  app.post("/api/auth/register", async (req, res) => {
-    const { name, email, password } = req.body;
-    if (!name || !email || !password) {
-      return res.status(400).json({ message: "جميع الحقول مطلوبة" });
+  // OIDC Callback
+  app.get("/api/auth/callback", async (req, res) => {
+    const { code, error, error_description } = req.query;
+
+    if (error) {
+      console.error("Auth Error:", error, error_description);
+      return res.redirect("/login?error=" + encodeURIComponent(error as string));
     }
-    const userId = `user-${Date.now()}`;
-    const [firstName, ...lastParts] = name.split(" ");
-    const lastName = lastParts.join(" ") || "";
+
+    if (!code || typeof code !== "string") {
+      return res.redirect("/login?error=no_code");
+    }
+
     try {
-      await authStorage.upsertUser({
-        id: userId,
-        email,
-        firstName: firstName || name,
-        lastName,
-        profileImageUrl: null,
+      const tokenParams = new URLSearchParams({
+        grant_type: "authorization_code",
+        code,
+        client_id: LOGTO_APP_ID!,
+        client_secret: LOGTO_APP_SECRET!,
+        redirect_uri: LOGTO_CALLBACK_URL,
       });
+
+      const tokenRes = await fetch(`${LOGTO_ENDPOINT}/oidc/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: tokenParams,
+      });
+
+      if (!tokenRes.ok) {
+        const errText = await tokenRes.text();
+        throw new Error(`Token exchange failed: ${errText}`);
+      }
+
+      const tokens = await tokenRes.json();
+      // tokens: { access_token, id_token, refresh_token, ... }
+
+      // Decode ID Token to get user info (no need to verify signature locally if over TLS from trusted issuer, 
+      // but ideally use a library. For now, decode payload).
+      const idToken = tokens.id_token;
+      if (!idToken) throw new Error("No ID Token received");
+
+      const payloadPart = idToken.split(".")[1];
+      const payload = JSON.parse(Buffer.from(payloadPart, "base64").toString());
+
+      const userId = payload.sub; // Logto user ID
+      const email = payload.email;
+      const name = payload.name;
+      const picture = payload.picture;
+
+      // Extract first/last name
+      const [firstName, ...lastParts] = (name || "").split(" ");
+      const lastName = lastParts.join(" ");
+
+      // Upsert user
+      const user = await authStorage.upsertUser({
+        id: userId,
+        email: email,
+        firstName: firstName || "User",
+        lastName: lastName,
+        profileImageUrl: picture,
+      });
+
+      // Session claims 
+      // We map Logto user to our session structure
       const sessionUser: any = {
         claims: {
-          sub: userId,
-          email,
-          first_name: firstName || name,
-          last_name: lastName,
+          sub: user.id,
+          email: user.email,
+          first_name: user.firstName,
+          last_name: user.lastName,
+          picture: user.profileImageUrl,
         },
-        expires_at: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60,
-      };
-      req.login(sessionUser, (err) => {
-        if (err) {
-          return res.status(500).json({ message: "فشل إنشاء الحساب" });
+        expires_at: Math.floor(Date.now() / 1000) + 7 * 24 * 60 * 60, // 1 week
+        // We can also store access_token/refresh_token if needed for API calls
+        tokens: {
+          access_token: tokens.access_token,
+          refresh_token: tokens.refresh_token,
         }
-        return res.json({ success: true, redirect: "/dashboard" });
-      });
-    } catch {
-      return res.status(500).json({ message: "حدث خطأ أثناء التسجيل" });
-    }
-  });
+      };
 
-  // Login redirect
-  app.get("/api/login", (req, res) => {
-    res.redirect("/login");
+      req.login(sessionUser, (err) => {
+        if (err) throw err;
+        res.redirect("/dashboard");
+      });
+    } catch (err) {
+      console.error("Callback processing error:", err);
+      res.redirect("/login?error=processing_failed");
+    }
   });
 
   // Logout
   app.get("/api/logout", (req, res) => {
-    req.logout(() => {
+    req.logout((err) => {
+      if (err) console.error("Logout error", err);
+      // Redirect to Logto end_session_endpoint if desired, or just home
+      // `${LOGTO_ENDPOINT}/oidc/session/end?post_logout_redirect_uri=${...}`
       res.redirect("/");
     });
+  });
+
+  // Keep GET /api/login for compatibility if something links to it
+  app.get("/api/login", (req, res) => {
+    res.redirect("/api/auth/login");
   });
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
   const user = req.user as any;
-
-  if (!req.isAuthenticated() || !user?.expires_at) {
+  if (!req.isAuthenticated() || !user) {
     return res.status(401).json({ message: "Unauthorized" });
   }
-
-  const now = Math.floor(Date.now() / 1000);
-  if (now <= user.expires_at) {
-    return next();
-  }
-
-  return res.status(401).json({ message: "Unauthorized" });
+  return next();
 };
