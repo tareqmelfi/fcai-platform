@@ -11,15 +11,13 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  ModelSelector,
-  TemplateSelector,
-  SkillsPickerDropdown,
-  McpServersDropdown,
-  McpToolsBar,
-  AttachmentMenu,
-  FileChip,
-} from "./index";
+import { ModelSelector } from "./ModelSelector";
+import { TemplateSelector } from "./TemplateSelector";
+import { SkillsPickerDropdown } from "./SkillsPickerDropdown";
+import { McpServersDropdown } from "./McpServersDropdown";
+import { McpToolsBar } from "./McpToolsBar";
+import { AttachmentMenu } from "./AttachmentMenu";
+import { FileChip } from "./FileChip";
 import type { AttachedFile, OutputTemplate, SkillType, McpServerType } from "../types";
 
 interface ChatInputProps {

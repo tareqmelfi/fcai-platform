@@ -1,6 +1,8 @@
 import React from "react";
 import { Bot, ChevronDown } from "lucide-react";
-import { ChatMessage, TypingIndicator, TemplatedMessage } from "./index";
+import { ChatMessage } from "./ChatMessage";
+import { TypingIndicator } from "./TypingIndicator";
+import { TemplatedMessage } from "./TemplatedMessage";
 import type { MessageType, OutputTemplate } from "../types";
 
 interface MessageListProps {
