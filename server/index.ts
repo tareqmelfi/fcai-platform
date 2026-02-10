@@ -64,13 +64,20 @@ app.use((req, res, next) => {
   next();
 });
 
+let startupError: any = null;
+
 (async () => {
   try {
     log(`Starting server in ${process.env.NODE_ENV} mode...`);
     log(`Database URL: ${process.env.DATABASE_URL ? "SET" : "NOT SET"}`);
     log(`Port: ${process.env.PORT || "5000 (default)"}`);
 
-    await registerRoutes(httpServer, app);
+    try {
+      await registerRoutes(httpServer, app);
+    } catch (routeError) {
+      console.error("FAILED TO REGISTER ROUTES:", routeError);
+      startupError = routeError;
+    }
 
     app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
       if (res.headersSent) {
@@ -82,6 +89,17 @@ app.use((req, res, next) => {
 
       console.error("Internal Server Error:", err);
       return res.status(status).json({ message });
+    });
+
+    app.get("/api/health", (req, res) => {
+      if (startupError) {
+        return res.status(500).json({ 
+          status: "startup_error", 
+          error: startupError.message || String(startupError),
+          stack: process.env.NODE_ENV === "development" ? startupError.stack : undefined
+        });
+      }
+      res.json({ status: "ok", version: "1.0.1-live-debug" });
     });
 
     if (process.env.NODE_ENV === "production") {
@@ -100,10 +118,16 @@ app.use((req, res, next) => {
       },
       () => {
         log(`serving on port ${port}`);
+        if (startupError) {
+          log("SERVER STARTED WITH ERRORS (Check /api/health)", "error");
+        }
       },
     );
   } catch (error) {
-    console.error("CRITICAL FATAL STARTUP ERROR:", error);
-    process.exit(1);
+    console.error("CRITICAL FATAL UNHANDLED ERROR:", error);
+    // Only exit if we absolutely cannot even start the listener
+    if (!httpServer.listening) {
+       process.exit(1);
+    }
   }
 })();
