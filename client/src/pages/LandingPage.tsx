@@ -11,6 +11,7 @@ const fadeUp = {
 };
 
 export default function LandingPage() {
+  // Live Update Version: 1.0.1
   return (
     <div className="min-h-screen bg-[#001539] text-white overflow-x-hidden rtl select-none" data-testid="landing-page">
       <div className="absolute inset-0 z-0 opacity-10 pointer-events-none"

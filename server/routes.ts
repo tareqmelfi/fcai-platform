@@ -24,6 +24,10 @@ export async function registerRoutes(
   registerProjectRoutes(app);
   registerMarketplaceRoutes(app);
 
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", version: "1.0.1-live-update" });
+  });
+
   app.get(api.agents.list.path, async (req, res) => {
     const agents = await storage.getAgents();
     res.json(agents);
