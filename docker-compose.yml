@@ -9,7 +9,14 @@ services:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/fcai_db
       - REDIS_URL=redis://redis:6379
       - QDRANT_URL=http://qdrant:6333
-      # Add other necessary env vars here, e.g. OPENROUTER_API_KEY
+      - SESSION_SECRET=${SESSION_SECRET:-change-me-in-production}
+      - LOGTO_ENDPOINT=${LOGTO_ENDPOINT:-https://auth.fc.sa}
+      - LOGTO_APP_ID=${LOGTO_APP_ID}
+      - LOGTO_APP_SECRET=${LOGTO_APP_SECRET}
+      - LOGTO_CALLBACK_URL=${LOGTO_CALLBACK_URL:-https://fc.sa/api/auth/callback}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-sk-or-placeholder}
     depends_on:
       - postgres
       - redis

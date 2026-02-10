@@ -242,7 +242,7 @@ export default function ChatPage() {
 
   const messages = conversation?.messages || [];
   const showWelcome = !activeId || (messages.length === 0 && !isStreaming);
-  const hasContent = inputText.trim() || attachedFiles.length > 0;
+  const hasContent = Boolean(inputText.trim() || attachedFiles.length > 0);
   const userInitial = useMemo(() => user?.firstName?.[0] || "U", [user?.firstName]);
 
   return (

@@ -14,7 +14,7 @@ export function getSession() {
   const store = new PgStore({
     conString: process.env.DATABASE_URL,
     createTableIfMissing: true,
-    tableName: "session",
+    tableName: "sessions",
   });
 
   return session({
@@ -25,6 +25,7 @@ export function getSession() {
     cookie: {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
       maxAge: sessionTtl,
     },
   });
@@ -43,7 +44,7 @@ export async function setupAuth(app: Express) {
   const LOGTO_ENDPOINT = process.env.LOGTO_ENDPOINT || "https://auth.fc.sa";
   const LOGTO_APP_ID = process.env.LOGTO_APP_ID;
   const LOGTO_APP_SECRET = process.env.LOGTO_APP_SECRET;
-  const LOGTO_CALLBACK_URL = process.env.LOGTO_CALLBACK_URL || "https://ai.fc.sa/api/auth/callback";
+  const LOGTO_CALLBACK_URL = process.env.LOGTO_CALLBACK_URL || "https://fc.sa/api/auth/callback";
 
   // Login redirects to Logto
   app.get("/api/auth/login", (req, res) => {
@@ -65,6 +66,11 @@ export async function setupAuth(app: Express) {
 
   // OIDC Callback
   app.get("/api/auth/callback", async (req, res) => {
+    if (!LOGTO_APP_ID || !LOGTO_APP_SECRET) {
+      console.error("LOGTO_APP_ID or LOGTO_APP_SECRET not configured");
+      return res.redirect("/login?error=auth_not_configured");
+    }
+
     const { code, error, error_description } = req.query;
 
     if (error) {
